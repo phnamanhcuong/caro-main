@@ -61,31 +61,31 @@ namespace CaroClient
 
             // ===================== ComboBoxMode =====================
             this.comboBoxMode.Location = new System.Drawing.Point(550, 30);
-            this.comboBoxMode.Size = new System.Drawing.Size(150, 25);
+            this.comboBoxMode.Size = new System.Drawing.Size(150, 30);
             this.comboBoxMode.Items.AddRange(new object[] { "Local 2P", "Máy", "Người" });
             this.Controls.Add(this.comboBoxMode);
 
             // ===================== ComboBoxDifficulty =====================
             this.comboBoxDifficulty.Location = new System.Drawing.Point(550, 70);
-            this.comboBoxDifficulty.Size = new System.Drawing.Size(150, 25);
+            this.comboBoxDifficulty.Size = new System.Drawing.Size(150, 30);
             this.comboBoxDifficulty.Items.AddRange(new object[] { "Dễ", "Trung bình", "Khó", "Rất khó" });
             this.Controls.Add(this.comboBoxDifficulty);
 
             // ===================== txtIP =====================
             this.txtIP.Location = new System.Drawing.Point(550, 110);
-            this.txtIP.Size = new System.Drawing.Size(150, 25);
+            this.txtIP.Size = new System.Drawing.Size(150, 30);
             this.txtIP.PlaceholderText = "Nhập IP Server";
             this.Controls.Add(this.txtIP);
 
             // ===================== lblScore =====================
             this.lblScore.Location = new System.Drawing.Point(550, 150);
-            this.lblScore.Size = new System.Drawing.Size(200, 25);
+            this.lblScore.Size = new System.Drawing.Size(200, 30);
             this.lblScore.Text = "Tỷ số: 0 - 0";
             this.Controls.Add(this.lblScore);
 
             // ===================== lblWinner =====================
             this.lblWinner.Location = new System.Drawing.Point(550, 180);
-            this.lblWinner.Size = new System.Drawing.Size(200, 25);
+            this.lblWinner.Size = new System.Drawing.Size(200, 30);
             this.lblWinner.Text = "Người thắng: ";
             this.Controls.Add(this.lblWinner);
 
@@ -102,28 +102,28 @@ namespace CaroClient
 
             // ===================== txtMessage =====================
             this.txtMessage.Location = new System.Drawing.Point(550, 530);
-            this.txtMessage.Size = new System.Drawing.Size(220, 25);
+            this.txtMessage.Size = new System.Drawing.Size(220, 30);
             this.txtMessage.KeyDown += new System.Windows.Forms.KeyEventHandler(this.TxtMessage_KeyDown);
             this.Controls.Add(this.txtMessage);
 
             // ===================== btnSend =====================
             this.btnSend.Location = new System.Drawing.Point(780, 530);
-            this.btnSend.Size = new System.Drawing.Size(70, 25);
+            this.btnSend.Size = new System.Drawing.Size(70, 30);
             this.btnSend.Text = "Gửi";
             this.btnSend.Click += new System.EventHandler(this.BtnSend_Click);
             this.Controls.Add(this.btnSend);
 
             // ===================== btnConnect =====================
             this.btnConnect.Location = new System.Drawing.Point(720, 30);
-            this.btnConnect.Size = new System.Drawing.Size(120, 25);
-            this.btnConnect.Text = "Kết nối / Bắt đầu";
+            this.btnConnect.Size = new System.Drawing.Size(120, 30);
+            this.btnConnect.Text = "Bắt đầu";
             this.btnConnect.Click += new System.EventHandler(this.btnConnect_Click);
             this.Controls.Add(this.btnConnect);
 
             // ===================== btnReset =====================
             this.btnReset.Location = new System.Drawing.Point(720, 70);
-            this.btnReset.Size = new System.Drawing.Size(120, 25);
-            this.btnReset.Text = "Đặt lại bàn";
+            this.btnReset.Size = new System.Drawing.Size(120, 30);
+            this.btnReset.Text = "Chơi lại";
             this.btnReset.Click += new System.EventHandler(this.btnReset_Click);
             this.Controls.Add(this.btnReset);
 
