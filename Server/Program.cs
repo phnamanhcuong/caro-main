@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
@@ -8,22 +8,64 @@ using System.Threading;
 
 namespace CaroServer
 {
-    internal class Program
+    class Player
     {
-        static TcpListener? server;
-        static List<Player> waitingPlayers = new List<Player>();
-        static List<GameRoom> rooms = new List<GameRoom>();
+        public TcpClient? Client;
+        public StreamReader? Reader;
+        public StreamWriter? Writer;
+        public string? Name;
+        public Room? RoomRef;
+    }
 
-        static void Main(string[] args)
+    class Room
+    {
+        public Player? P1;
+        public Player? P2;
+        public bool IsXTurn = true; // true = X, false = O
+        private static Random rnd = new Random();
+
+        public void Reset()
         {
-            Console.OutputEncoding = Encoding.UTF8;
-            Console.Title = "🎮 Caro Server";
-            int port = 5000;
+            if (P1 != null && P2 != null)
+            {
+                // ---- [Sửa 1] Random chọn ai đi X trước ----
+                if (rnd.Next(2) == 0)
+                {
+                    Send(P1, $"START X {P1.Name}");
+                    Send(P2, $"START O {P1.Name}");
+                    Send(P1, "TURN");
+                    IsXTurn = true;
+                }
+                else
+                {
+                    Send(P1, $"START O {P2.Name}");
+                    Send(P2, $"START X {P2.Name}");
+                    Send(P2, "TURN");
+                    IsXTurn = false;
+                }
+            }
+        }
 
-            server = new TcpListener(IPAddress.Any, port);
+        private void Send(Player? p, string text)
+        {
+            if (p?.Writer == null) return;
+            try { p.Writer.WriteLine(text); }
+            catch { }
+        }
+    }
+
+    class Program
+    {
+        static List<Player> waitingPlayers = new List<Player>();
+        static List<Room> rooms = new List<Room>();
+        static Dictionary<string, int> scores = new Dictionary<string, int>();
+
+        static void Main()
+        {
+            Console.Title = "=== CARO SERVER ===";
+            TcpListener server = new TcpListener(IPAddress.Any, 5000);
             server.Start();
-            Console.WriteLine($"🚀 Server Caro đang chạy trên cổng {port}...");
-            Console.WriteLine("⏳ Đang chờ người chơi kết nối...");
+            Console.WriteLine("Server running on port 5000...\n");
 
             while (true)
             {
@@ -34,120 +76,142 @@ namespace CaroServer
             }
         }
 
-        static void HandleClient(TcpClient tcpClient)
+        static void HandleClient(TcpClient client)
         {
-            Player player = new Player(tcpClient);
+            Player p = new Player
+            {
+                Client = client,
+                Reader = new StreamReader(client.GetStream(), Encoding.UTF8),
+                Writer = new StreamWriter(client.GetStream(), Encoding.UTF8) { AutoFlush = true }
+            };
+
+            Send(p, "HELLO");
 
             try
             {
-                player.Writer.WriteLine("Nhập tên:");
-                string? name = player.Reader.ReadLine();
-                if (string.IsNullOrEmpty(name)) name = "Người chơi";
-                player.Name = name;
-                Console.WriteLine($"✅ {player.Name} đã kết nối.");
+                p.Name = p.Reader?.ReadLine()?.Trim();
+                if (string.IsNullOrEmpty(p.Name))
+                    p.Name = "Unknown";
 
-                lock (waitingPlayers)
+                Console.WriteLine($"Client joined: {p.Name}");
+            }
+            catch
+            {
+                client.Close();
+                return;
+            }
+
+            // ---- [Sửa 2] Ghép phòng với lock ----
+            lock (waitingPlayers)
+            {
+                waitingPlayers.Add(p);
+                if (waitingPlayers.Count >= 2)
                 {
-                    if (waitingPlayers.Count > 0)
-                    {
-                        Player other = waitingPlayers[0];
-                        waitingPlayers.RemoveAt(0);
+                    Player p1 = waitingPlayers[0]!;
+                    Player p2 = waitingPlayers[1]!;
+                    waitingPlayers.RemoveRange(0, 2);
 
-                        GameRoom room = new GameRoom(other, player);
-                        rooms.Add(room);
-                        room.Start();
-                        Console.WriteLine($"🎯 Ghép cặp: {other.Name} vs {player.Name}");
-                    }
-                    else
+                    Room r = new Room { P1 = p1, P2 = p2 };
+                    lock (rooms) { rooms.Add(r); } // ---- lock rooms ----
+                    p1.RoomRef = r;
+                    p2.RoomRef = r;
+
+                    r.Reset();
+                }
+            }
+
+            try
+            {
+                while (true)
+                {
+                    string? msg = p.Reader?.ReadLine();
+                    if (string.IsNullOrEmpty(msg))
                     {
-                        waitingPlayers.Add(player);
-                        player.Writer.WriteLine("⏳ Đang chờ đối thủ...");
+                        Thread.Sleep(50);
+                        continue;
+                    }
+
+                    if (msg.StartsWith("MOVE"))
+                    {
+                        Room? r = p.RoomRef;
+                        if (r?.P1 == null || r?.P2 == null) continue;
+
+                        Player other = (r.P1 == p) ? r.P2! : r.P1!;
+                        Send(other, msg);
+
+                        r.IsXTurn = !r.IsXTurn;
+                        Send(other, "TURN");
+                    }
+                    else if (msg.StartsWith("WIN"))
+                    {
+                        string winnerName = msg.Substring(4).Trim();
+                        Room? r = p.RoomRef;
+                        if (r?.P1 == null || r?.P2 == null) return;
+
+                        if (!scores.ContainsKey(winnerName))
+                            scores[winnerName] = 0;
+                        scores[winnerName] += 1;
+
+                        string log = $"{winnerName} thắng lúc {DateTime.Now} (Tổng thắng: {scores[winnerName]})";
+                        File.AppendAllText("result.txt", log + Environment.NewLine);
+                        Console.WriteLine($"SAVE RESULT => {log}");
+
+                        // ---- [Sửa 3] WIN chỉ gửi 2 tham số ----
+                        Send(r.P1, $"WIN {winnerName} {scores[winnerName]}");
+                        Send(r.P2, $"WIN {winnerName} {scores[winnerName]}");
+
+                        r.Reset();
+                    }
+                    else if (msg.StartsWith("CHAT"))
+                    {
+                        // ---- [Sửa 4] Chat gửi kèm tên người gửi ----
+                        string chatText = msg.Substring(5).Trim(); // bỏ "CHAT "
+                        string fullMsg = $"CHAT {p.Name}: {chatText}";
+
+                        File.AppendAllText("chatlog.txt", $"{DateTime.Now:T} {p.Name}: {chatText}{Environment.NewLine}");
+                        Console.WriteLine($"CHAT: {fullMsg}");
+
+                        Room? r = p.RoomRef;
+                        if (r?.P1 != null && r?.P2 != null)
+                        {
+                            Send(r.P1, fullMsg);
+                            Send(r.P2, fullMsg);
+                        }
                     }
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine("Lỗi client: " + ex.Message);
+                Console.WriteLine($"Error with {p.Name}: {ex.Message}");
             }
-        }
-    }
-
-    class Player
-    {
-        public string Name = "Player";
-        public TcpClient Client;
-        public StreamReader Reader;
-        public StreamWriter Writer;
-        public GameRoom? Room;
-        public char Symbol;
-
-        public Player(TcpClient c)
-        {
-            Client = c;
-            Reader = new StreamReader(c.GetStream(), Encoding.UTF8);
-            Writer = new StreamWriter(c.GetStream(), Encoding.UTF8) { AutoFlush = true };
-        }
-    }
-
-    class GameRoom
-    {
-        Player p1, p2;
-        public GameRoom(Player a, Player b)
-        {
-            p1 = a; p2 = b;
-            p1.Room = this; p2.Room = this;
-        }
-
-        public void Start()
-        {
-            p1.Symbol = 'X';
-            p2.Symbol = 'O';
-
-            p1.Writer.WriteLine($"ROOM X {p2.Name}");
-            p2.Writer.WriteLine($"ROOM O {p1.Name}");
-
-            p1.Writer.WriteLine("TURN"); // X đi trước
-
-            Thread t1 = new Thread(() => Listen(p1));
-            Thread t2 = new Thread(() => Listen(p2));
-            t1.IsBackground = true;
-            t2.IsBackground = true;
-            t1.Start();
-            t2.Start();
-        }
-
-        private void Listen(Player p)
-        {
-            try
+            finally
             {
-                while (true)
-                {
-                    string? msg = p.Reader.ReadLine();
-                    if (msg == null) break;
+                client.Close();
 
-                    if (msg.StartsWith("MOVE"))
+                // ---- [Sửa 5] Thông báo đối thủ nếu client disconnect ----
+                lock (waitingPlayers)
+                {
+                    waitingPlayers.Remove(p);
+                }
+
+                Room? r = p.RoomRef;
+                if (r != null)
+                {
+                    Player? other = (r.P1 == p) ? r.P2 : r.P1;
+                    if (other != null)
                     {
-                        // Gửi cho đối thủ
-                        Player other = (p == p1) ? p2 : p1;
-                        other.Writer.WriteLine(msg);
-                        other.Writer.WriteLine("TURN");
+                        Send(other, $"CHAT Hệ thống: Đối thủ {p.Name} đã ngắt kết nối.");
                     }
-                    else if (msg.StartsWith("WIN"))
-                    {
-                        string winner = msg.Substring(4).Trim();
-                        p1.Writer.WriteLine("WIN " + winner);
-                        p2.Writer.WriteLine("WIN " + winner);
-                        Console.WriteLine($"🏆 Trận {p1.Name} vs {p2.Name}: {winner} thắng!");
-                    }
+                    lock (rooms) { rooms.Remove(r); }
                 }
             }
-            catch
-            {
-                // Ngắt kết nối
-                Player other = (p == p1) ? p2 : p1;
-                other.Writer.WriteLine("WIN " + other.Name);
-                Console.WriteLine($"❌ {p.Name} ngắt kết nối. {other.Name} thắng!");
-            }
+        }
+
+        static void Send(Player? p, string text)
+        {
+            if (p?.Writer == null) return;
+            try { p.Writer.WriteLine(text); }
+            catch { }
         }
     }
 }
