@@ -17,38 +17,31 @@ namespace CaroClient
         enum Cell { Empty, X, O }
 
         Cell[,] board = new Cell[BOARD_SIZE, BOARD_SIZE];
-        bool myTurn = false;
+        bool myTurn = true;
         Cell mySymbol = Cell.X;
+        Cell currentSymbol = Cell.X;
 
+        // Online
         TcpClient? client;
         StreamReader? reader;
         StreamWriter? writer;
         Thread? receiveThread;
 
-        string playerName = "Player";
+        string playerName = "Người chơi";
 
-        // Thống kê
         int wins = 0;
         int losses = 0;
 
-        // Lưu chế độ hiện tại
         string currentMode = "Local 2P";
         bool isAI = false;
         bool isOnline = false;
 
-        Cell currentSymbol = Cell.X; // cho Local 2P
         Random rnd = new Random();
-
-        ListBox lstHistory = new ListBox();
 
         public Form1()
         {
             InitializeComponent();
             DoubleBuffered = true;
-
-            lstHistory.Location = new Point(BOARD_SIZE * CELL_SIZE + 80, 70);
-            lstHistory.Size = new Size(220, 400);
-            Controls.Add(lstHistory);
         }
 
         private void Form1_Load(object sender, EventArgs e)
@@ -64,12 +57,266 @@ namespace CaroClient
                 for (int j = 0; j < BOARD_SIZE; j++)
                     board[i, j] = Cell.Empty;
 
-            myTurn = (currentMode == "Local 2P") ? true : false;
+            myTurn = true;
             currentSymbol = Cell.X;
-            Invalidate();
+            panelBoard.Invalidate();
         }
 
-        // ======================== ONLINE CONNECT ========================
+        // ======================= DRAW BOARD =======================
+        private void PanelBoard_Paint(object sender, PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            g.Clear(Color.Beige);
+
+            // Vẽ lưới
+            for (int i = 0; i <= BOARD_SIZE; i++)
+            {
+                g.DrawLine(Pens.Black, 0, i * CELL_SIZE, BOARD_SIZE * CELL_SIZE, i * CELL_SIZE);
+                g.DrawLine(Pens.Black, i * CELL_SIZE, 0, i * CELL_SIZE, BOARD_SIZE * CELL_SIZE);
+            }
+
+            // Vẽ X,O
+            for (int r = 0; r < BOARD_SIZE; r++)
+                for (int c = 0; c < BOARD_SIZE; c++)
+                {
+                    if (board[r, c] == Cell.X)
+                        g.DrawString("X", new Font("Arial", 18, FontStyle.Bold), Brushes.Red, c * CELL_SIZE + 5, r * CELL_SIZE + 5);
+                    else if (board[r, c] == Cell.O)
+                        g.DrawString("O", new Font("Arial", 18, FontStyle.Bold), Brushes.Blue, c * CELL_SIZE + 5, r * CELL_SIZE + 5);
+                }
+        }
+
+        // ======================= CLICK BOARD =======================
+        private void PanelBoard_MouseClick(object sender, MouseEventArgs e)
+        {
+            int col = e.X / CELL_SIZE;
+            int row = e.Y / CELL_SIZE;
+
+            if (row < 0 || col < 0 || row >= BOARD_SIZE || col >= BOARD_SIZE)
+                return;
+
+            if (board[row, col] != Cell.Empty) return;
+
+            if (currentMode == "Local 2P")
+            {
+                board[row, col] = currentSymbol;
+                if (CheckWin(row, col))
+                {
+                    string winner = (currentSymbol == Cell.X) ? "Người chơi X" : "Người chơi O";
+                    MessageBox.Show($"{winner} thắng!");
+                    if (currentSymbol == Cell.X) wins++; else losses++;
+                    lstHistory.Items.Add($"{winner} thắng ({DateTime.Now:T})");
+                    UpdateScore();
+                    ResetBoard();
+                    return;
+                }
+                currentSymbol = (currentSymbol == Cell.X) ? Cell.O : Cell.X;
+            }
+            else if (currentMode == "Máy")
+            {
+                if (!myTurn) return;
+                board[row, col] = Cell.X;
+                if (CheckWin(row, col))
+                {
+                    MessageBox.Show("Bạn thắng!");
+                    wins++;
+                    UpdateScore();
+                    ResetBoard();
+                    return;
+                }
+                myTurn = false;
+                panelBoard.Invalidate();
+                AITurn();
+            }
+            else if (currentMode == "Người")
+            {
+                if (!myTurn || writer == null) return;
+                board[row, col] = mySymbol;
+                panelBoard.Invalidate();
+                writer.WriteLine($"MOVE {row} {col} {mySymbol}");
+                myTurn = false;
+                if (CheckWin(row, col))
+                {
+                    writer.WriteLine($"WIN {playerName}");
+                }
+            }
+
+            panelBoard.Invalidate();
+        }
+
+        // ======================= AI =======================
+        private void AITurn()
+        {
+            Thread.Sleep(300);
+            (int r, int c) = FindBestMove();
+            if (r == -1) { myTurn = true; return; }
+
+            board[r, c] = Cell.O;
+            if (CheckWin(r, c))
+            {
+                MessageBox.Show("Máy thắng!");
+                losses++;
+                UpdateScore();
+                ResetBoard();
+                return;
+            }
+            myTurn = true;
+            panelBoard.Invalidate();
+        }
+
+        private (int, int) FindBestMove()
+        {
+            // AI đơn giản nhưng hiệu quả: tấn công + block
+            int bestScore = -1;
+            int bestR = -1, bestC = -1;
+
+            for (int r = 0; r < BOARD_SIZE; r++)
+            {
+                for (int c = 0; c < BOARD_SIZE; c++)
+                {
+                    if (board[r, c] != Cell.Empty) continue;
+                    int score = EvaluateMove(r, c, Cell.O);
+                    if (score > bestScore)
+                    {
+                        bestScore = score;
+                        bestR = r;
+                        bestC = c;
+                    }
+                }
+            }
+
+            return (bestR, bestC);
+        }
+
+        private int EvaluateMove(int r, int c, Cell player)
+        {
+            int score = 0;
+            int[][] dirs = new int[][] { new int[] {0,1}, new int[]{1,0}, new int[]{1,1}, new int[]{1,-1} };
+
+            foreach (var d in dirs)
+            {
+                int line = 1 + Count(r, c, d[0], d[1], player) + Count(r, c, -d[0], -d[1], player);
+                score = Math.Max(score, line);
+            }
+
+            // Block người chơi
+            int playerLine = 1 + Count(r, c, 0, 1, Cell.X) + Count(r, c, 0, -1, Cell.X);
+            playerLine = Math.Max(playerLine, 1 + Count(r, c, 1, 0, Cell.X) + Count(r, c, -1, 0, Cell.X));
+            playerLine = Math.Max(playerLine, 1 + Count(r, c, 1, 1, Cell.X) + Count(r, c, -1, -1, Cell.X));
+            playerLine = Math.Max(playerLine, 1 + Count(r, c, 1, -1, Cell.X) + Count(r, c, -1, 1, Cell.X));
+
+            score += playerLine * 2; // ưu tiên block người chơi
+            return score;
+        }
+
+        private int Count(int r, int c, int dr, int dc, Cell player)
+        {
+            int cnt = 0;
+            int nr = r + dr, nc = c + dc;
+            while (nr >= 0 && nc >= 0 && nr < BOARD_SIZE && nc < BOARD_SIZE && board[nr, nc] == player)
+            {
+                cnt++;
+                nr += dr; nc += dc;
+            }
+            return cnt;
+        }
+
+        // ======================= Check Win =======================
+        private bool CheckWin(int r, int c)
+        {
+            int[][] dirs = new int[][] { new int[]{0,1}, new int[]{1,0}, new int[]{1,1}, new int[]{1,-1} };
+            foreach (var d in dirs)
+            {
+                int cnt = 1;
+                cnt += Count(r, c, d[0], d[1], board[r,c]);
+                cnt += Count(r, c, -d[0], -d[1], board[r,c]);
+                if (cnt >= 5) return true;
+            }
+            return false;
+        }
+
+        private void UpdateScore()
+        {
+            lblScore.Text = $"Tỷ số: {wins} - {losses}";
+        }
+
+        // ======================= CHAT =======================
+        private void BtnSend_Click(object sender, EventArgs e)
+        {
+            SendMessage();
+        }
+
+        private void TxtMessage_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Enter)
+            {
+                e.SuppressKeyPress = true;
+                SendMessage();
+            }
+        }
+
+        private void SendMessage()
+        {
+            if (string.IsNullOrWhiteSpace(txtMessage.Text)) return;
+            string msg = txtMessage.Text.Trim();
+            if (isOnline && writer != null)
+            {
+                writer.WriteLine($"CHAT {msg}");
+            }
+            rtbChat.AppendText($"Bạn: {msg}{Environment.NewLine}");
+            txtMessage.Clear();
+        }
+
+        // ======================= BUTTON =======================
+        private void btnConnect_Click(object sender, EventArgs e)
+        {
+            currentMode = comboBoxMode.SelectedItem?.ToString() ?? "Local 2P";
+            isAI = currentMode == "Máy";
+            isOnline = currentMode == "Người";
+            ResetBoard();
+
+            if (isAI)
+            {
+                MessageBox.Show("Bắt đầu chơi với Máy!");
+                myTurn = true;
+            }
+            else if (currentMode == "Local 2P")
+            {
+                MessageBox.Show("Chế độ 2 người chơi trên cùng máy!");
+            }
+            else if (isOnline)
+            {
+                string ip = txtIP.Text.Trim();
+                if (string.IsNullOrEmpty(ip)) ip = "127.0.0.1";
+
+                playerName = PromptName();
+                ConnectServer(ip, 5000);
+            }
+        }
+
+        private void btnReset_Click(object sender, EventArgs e)
+        {
+            ResetBoard();
+        }
+
+        private string PromptName()
+        {
+            using (Form f = new Form())
+            {
+                f.Width = 250; f.Height = 150;
+                f.Text = "Tên người chơi";
+
+                TextBox t = new TextBox() { Left = 40, Top = 30, Width = 150 };
+                Button ok = new Button() { Text = "OK", Left = 80, Top = 70, DialogResult = DialogResult.OK };
+                f.Controls.Add(t);
+                f.Controls.Add(ok);
+                f.AcceptButton = ok;
+
+                return (f.ShowDialog() == DialogResult.OK && !string.IsNullOrWhiteSpace(t.Text)) ? t.Text : "Người chơi";
+            }
+        }
+
+        // ======================= ONLINE =======================
         private void ConnectServer(string ip, int port)
         {
             try
@@ -102,11 +349,16 @@ namespace CaroClient
 
                     this.Invoke(new Action(() =>
                     {
-                        if (msg.StartsWith("ROOM"))
+                        if (msg.StartsWith("START"))
                         {
                             string[] p = msg.Split(' ');
-                            mySymbol = (p[1] == "X") ? Cell.X : Cell.O;
+                            string symbol = p[1];
+                            string firstPlayer = p[2];
+
+                            mySymbol = (symbol == "X") ? Cell.X : Cell.O;
                             Text = $"Bạn: {playerName} ({mySymbol})";
+
+                            myTurn = (firstPlayer == playerName);
                         }
                         else if (msg == "TURN")
                         {
@@ -119,237 +371,26 @@ namespace CaroClient
                             int c = int.Parse(s[2]);
                             Cell sym = (s[3] == "X") ? Cell.X : Cell.O;
                             board[r, c] = sym;
-                            Invalidate();
+                            panelBoard.Invalidate();
                             if (sym != mySymbol) myTurn = true;
                         }
                         else if (msg.StartsWith("WIN"))
                         {
-                            string winner = msg.Substring(4).Trim();
-                            if (winner == playerName) wins++;
-                            else losses++;
+                            string[] parts = msg.Split(' ');
+                            string winner = parts[1];
+                            lblWinner.Text = $"Người thắng: {winner}";
                             lstHistory.Items.Add($"{winner} thắng ({DateTime.Now:T})");
-                            UpdateTitle();
                             ResetBoard();
+                        }
+                        else if (msg.StartsWith("CHAT"))
+                        {
+                            string chat = msg.Substring(5);
+                            rtbChat.AppendText($"{chat}{Environment.NewLine}");
                         }
                     }));
                 }
             }
             catch { }
-        }
-
-        // ======================== DRAW BOARD ========================
-        protected override void OnPaint(PaintEventArgs e)
-        {
-            base.OnPaint(e);
-            DrawBoard(e.Graphics);
-        }
-
-        private void DrawBoard(Graphics g)
-        {
-            for (int i = 0; i <= BOARD_SIZE; i++)
-            {
-                g.DrawLine(Pens.Black, 50, 50 + i * CELL_SIZE, 50 + BOARD_SIZE * CELL_SIZE, 50 + i * CELL_SIZE);
-                g.DrawLine(Pens.Black, 50 + i * CELL_SIZE, 50, 50 + i * CELL_SIZE, 50 + BOARD_SIZE * CELL_SIZE);
-            }
-
-            for (int i = 0; i < BOARD_SIZE; i++)
-                for (int j = 0; j < BOARD_SIZE; j++)
-                {
-                    if (board[i, j] == Cell.X)
-                        g.DrawString("X", new Font("Arial", 18, FontStyle.Bold), Brushes.Red,
-                            50 + j * CELL_SIZE + 5, 50 + i * CELL_SIZE + 5);
-                    else if (board[i, j] == Cell.O)
-                        g.DrawString("O", new Font("Arial", 18, FontStyle.Bold), Brushes.Blue,
-                            50 + j * CELL_SIZE + 5, 50 + i * CELL_SIZE + 5);
-                }
-        }
-
-        // ======================== CLICK BOARD ========================
-        protected override void OnMouseClick(MouseEventArgs e)
-        {
-            base.OnMouseClick(e);
-
-            int col = (e.X - 50) / CELL_SIZE;
-            int row = (e.Y - 50) / CELL_SIZE;
-            if (row < 0 || col < 0 || row >= BOARD_SIZE || col >= BOARD_SIZE)
-                return;
-
-            if (currentMode == "Online")
-            {
-                if (!myTurn || writer == null) return;
-                if (board[row, col] != Cell.Empty) return;
-
-                board[row, col] = mySymbol;
-                Invalidate();
-                writer.WriteLine($"MOVE {row} {col} {mySymbol}");
-                myTurn = false;
-
-                if (CheckWin(row, col))
-                {
-                    writer.WriteLine($"WIN {playerName}");
-                    wins++;
-                    UpdateTitle();
-                    ResetBoard();
-                }
-            }
-            else if (currentMode == "Local 2P")
-            {
-                if (board[row, col] != Cell.Empty) return;
-                board[row, col] = currentSymbol;
-                Invalidate();
-
-                if (CheckWin(row, col))
-                {
-                    string winner = (currentSymbol == Cell.X) ? "Người chơi X" : "Người chơi O";
-                    MessageBox.Show($"{winner} thắng!");
-                    if (currentSymbol == Cell.X) wins++; else losses++;
-                    lstHistory.Items.Add($"{winner} thắng ({DateTime.Now:T})");
-                    UpdateTitle();
-                    ResetBoard();
-                    return;
-                }
-
-                currentSymbol = (currentSymbol == Cell.X) ? Cell.O : Cell.X;
-            }
-            else if (currentMode == "AI")
-            {
-                if (!myTurn || board[row, col] != Cell.Empty) return;
-                board[row, col] = Cell.X;
-                Invalidate();
-
-                if (CheckWin(row, col))
-                {
-                    MessageBox.Show("Bạn thắng!");
-                    wins++;
-                    UpdateTitle();
-                    ResetBoard();
-                    return;
-                }
-
-                myTurn = false;
-                AITurn();
-            }
-        }
-
-        // ======================== AI LOGIC ========================
-        private void AITurn()
-        {
-            Thread.Sleep(400);
-            int bestR = -1, bestC = -1;
-
-            // AI tìm ô trống ngẫu nhiên gần nước đi trước
-            for (int tries = 0; tries < 1000; tries++)
-            {
-                int r = rnd.Next(BOARD_SIZE);
-                int c = rnd.Next(BOARD_SIZE);
-                if (board[r, c] == Cell.Empty)
-                {
-                    bestR = r;
-                    bestC = c;
-                    break;
-                }
-            }
-
-            if (bestR == -1) return;
-
-            board[bestR, bestC] = Cell.O;
-            Invalidate();
-
-            if (CheckWin(bestR, bestC))
-            {
-                MessageBox.Show("AI thắng!");
-                losses++;
-                UpdateTitle();
-                ResetBoard();
-                return;
-            }
-
-            myTurn = true;
-        }
-
-        // ======================== UTILITIES ========================
-        private bool CheckWin(int r, int c)
-        {
-            int[][] dirs = new int[][] {
-                new int[]{0,1}, new int[]{1,0}, new int[]{1,1}, new int[]{1,-1}
-            };
-            foreach (var d in dirs)
-            {
-                int cnt = 1;
-                cnt += Count(r, c, d[0], d[1]);
-                cnt += Count(r, c, -d[0], -d[1]);
-                if (cnt >= 5) return true;
-            }
-            return false;
-        }
-
-        private int Count(int r, int c, int dr, int dc)
-        {
-            int cnt = 0;
-            Cell cur = board[r, c];
-            int nr = r + dr, nc = c + dc;
-            while (nr >= 0 && nc >= 0 && nr < BOARD_SIZE && nc < BOARD_SIZE && board[nr, nc] == cur)
-            {
-                cnt++;
-                nr += dr;
-                nc += dc;
-            }
-            return cnt;
-        }
-
-        private void UpdateTitle()
-        {
-            lblScore.Text = $"Tỷ số: {wins} - {losses}";
-        }
-
-        // ======================== BUTTONS ========================
-        private void btnConnect_Click(object sender, EventArgs e)
-        {
-            currentMode = comboBoxMode.SelectedItem?.ToString() ?? "Local 2P";
-            isAI = currentMode == "AI";
-            isOnline = currentMode == "Online";
-            ResetBoard();
-
-            if (isOnline)
-            {
-                string ip = txtIP.Text.Trim();
-                if (string.IsNullOrEmpty(ip)) ip = "127.0.0.1";
-
-                playerName = PromptName();
-                ConnectServer(ip, 5000);
-            }
-            else if (isAI)
-            {
-                MessageBox.Show("Bắt đầu chơi với AI!");
-                myTurn = true;
-            }
-            else
-            {
-                MessageBox.Show("Chế độ 2 người chơi trên cùng máy!");
-            }
-        }
-
-        private string PromptName()
-        {
-            using (Form f = new Form())
-            {
-                f.Width = 250; f.Height = 150;
-                f.Text = "Tên người chơi";
-
-                TextBox t = new TextBox() { Left = 40, Top = 30, Width = 150 };
-                Button ok = new Button() { Text = "OK", Left = 80, Top = 70, DialogResult = DialogResult.OK };
-                f.Controls.Add(t);
-                f.Controls.Add(ok);
-                f.AcceptButton = ok;
-
-                return (f.ShowDialog() == DialogResult.OK && !string.IsNullOrWhiteSpace(t.Text))
-                    ? t.Text : "Player";
-            }
-        }
-
-        private void btnReset_Click(object sender, EventArgs e)
-        {
-            ResetBoard();
         }
     }
 }
