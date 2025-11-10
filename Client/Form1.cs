@@ -263,7 +263,7 @@ namespace CaroClient
             {
                 writer.WriteLine($"CHAT {msg}");
             }
-            rtbChat.AppendText($"Bạn: {msg}{Environment.NewLine}");
+            // rtbChat.AppendText($"Bạn: {msg}{Environment.NewLine}");
             txtMessage.Clear();
         }
 
@@ -287,7 +287,7 @@ namespace CaroClient
             else if (isOnline)
             {
                 string ip = txtIP.Text.Trim();
-                if (string.IsNullOrEmpty(ip)) ip = "127.0.0.1";
+                if (string.IsNullOrEmpty(ip)) ip = "117.0.0.2";
 
                 playerName = PromptName();
                 ConnectServer(ip, 5000);
