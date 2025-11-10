@@ -1,4 +1,4 @@
-using System.Windows.Forms;
+﻿using System.Windows.Forms;
 using System.Drawing;
 
 namespace CaroClient
@@ -19,6 +19,11 @@ namespace CaroClient
         private System.Windows.Forms.Button btnConnect;
         private System.Windows.Forms.Button btnReset;
         private System.Windows.Forms.Button btnSend;
+
+        // Thêm nhãn mới
+        private System.Windows.Forms.Label lblMode;
+        private System.Windows.Forms.Label lblDifficulty;
+        private System.Windows.Forms.Label lblIP;
 
         protected override void Dispose(bool disposing)
         {
@@ -46,6 +51,10 @@ namespace CaroClient
             this.btnReset = new System.Windows.Forms.Button();
             this.btnSend = new System.Windows.Forms.Button();
 
+            this.lblMode = new System.Windows.Forms.Label();
+            this.lblDifficulty = new System.Windows.Forms.Label();
+            this.lblIP = new System.Windows.Forms.Label();
+
             // ===================== Form =====================
             this.SuspendLayout();
             this.ClientSize = new System.Drawing.Size(900, 600);
@@ -59,44 +68,62 @@ namespace CaroClient
             this.panelBoard.MouseClick += new System.Windows.Forms.MouseEventHandler(this.PanelBoard_MouseClick);
             this.Controls.Add(this.panelBoard);
 
+            // ===================== lblMode =====================
+            this.lblMode.Location = new System.Drawing.Point(550, 10);
+            this.lblMode.Size = new System.Drawing.Size(100, 20);
+            this.lblMode.Text = "Chế độ:";
+            this.Controls.Add(this.lblMode);
+
             // ===================== ComboBoxMode =====================
             this.comboBoxMode.Location = new System.Drawing.Point(550, 30);
             this.comboBoxMode.Size = new System.Drawing.Size(150, 30);
             this.comboBoxMode.Items.AddRange(new object[] { "Local 2P", "Máy", "Người" });
             this.Controls.Add(this.comboBoxMode);
 
+            // ===================== lblDifficulty =====================
+            this.lblDifficulty.Location = new System.Drawing.Point(550, 60);
+            this.lblDifficulty.Size = new System.Drawing.Size(100, 20);
+            this.lblDifficulty.Text = "Độ khó:";
+            this.Controls.Add(this.lblDifficulty);
+
             // ===================== ComboBoxDifficulty =====================
-            this.comboBoxDifficulty.Location = new System.Drawing.Point(550, 70);
+            this.comboBoxDifficulty.Location = new System.Drawing.Point(550, 80);
             this.comboBoxDifficulty.Size = new System.Drawing.Size(150, 30);
             this.comboBoxDifficulty.Items.AddRange(new object[] { "Dễ", "Trung bình", "Khó", "Rất khó" });
             this.Controls.Add(this.comboBoxDifficulty);
 
+            // ===================== lblIP =====================
+            this.lblIP.Location = new System.Drawing.Point(550, 110);
+            this.lblIP.Size = new System.Drawing.Size(100, 20);
+            this.lblIP.Text = "IP Server:";
+            this.Controls.Add(this.lblIP);
+
             // ===================== txtIP =====================
-            this.txtIP.Location = new System.Drawing.Point(550, 110);
+            this.txtIP.Location = new System.Drawing.Point(550, 130);
             this.txtIP.Size = new System.Drawing.Size(150, 30);
             this.txtIP.PlaceholderText = "Nhập IP Server";
             this.Controls.Add(this.txtIP);
 
             // ===================== lblScore =====================
-            this.lblScore.Location = new System.Drawing.Point(550, 150);
+            this.lblScore.Location = new System.Drawing.Point(550, 170);
             this.lblScore.Size = new System.Drawing.Size(200, 30);
-            this.lblScore.Text = "Tỷ số: 0 - 0";
+            this.lblScore.Text = "Tổng số trận: 0";
             this.Controls.Add(this.lblScore);
 
             // ===================== lblWinner =====================
-            this.lblWinner.Location = new System.Drawing.Point(550, 180);
+            this.lblWinner.Location = new System.Drawing.Point(550, 200);
             this.lblWinner.Size = new System.Drawing.Size(200, 30);
             this.lblWinner.Text = "Người thắng: ";
             this.Controls.Add(this.lblWinner);
 
             // ===================== lstHistory =====================
-            this.lstHistory.Location = new System.Drawing.Point(550, 210);
+            this.lstHistory.Location = new System.Drawing.Point(550, 230);
             this.lstHistory.Size = new System.Drawing.Size(300, 150);
             this.Controls.Add(this.lstHistory);
 
             // ===================== rtbChat =====================
-            this.rtbChat.Location = new System.Drawing.Point(550, 370);
-            this.rtbChat.Size = new System.Drawing.Size(300, 150);
+            this.rtbChat.Location = new System.Drawing.Point(550, 390);
+            this.rtbChat.Size = new System.Drawing.Size(300, 130);
             this.rtbChat.ReadOnly = true;
             this.Controls.Add(this.rtbChat);
 
